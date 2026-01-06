@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大气污染物综合排放标准排放速率查询工具</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-blue-50 min-h-screen p-4">
+
+<div class="max-w-4xl mx-auto bg-white rounded-xl shadow-md p-6">
+    <h1 class="text-2xl font-bold text-center text-blue-800 mb-4">大气污染物综合排放标准排放速率查询工具</h1>
+
+    <div class="mb-4">
+        <label class="block text-gray-700 mb-1">选择污染物</label>
+        <select id="pollutantSelect" class="w-full p-2 border border-gray-300 rounded"></select>
+    </div>
+
+    <div class="mb-4">
+        <label class="block text-gray-700 mb-1">排气筒高度（米）</label>
+        <input type="number" id="heightInput" class="w-full p-2 border border-gray-300 rounded" min="5" step="0.1">
+    </div>
+
+    <button id="calculateBtn" class="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700">计算</button>
+
+    <!-- 结果区域 -->
+    <div id="resultArea" class="mt-6 p-4 bg-blue-50 rounded hidden">
+        <div class="flex justify-between items-center mb-2">
+            <h2 class="text-xl font-bold">计算结果</h2>
+            <button id="copyBtn" onclick="copyResult()" class="bg-green-600 text-white p-1 px-3 rounded hover:bg-green-700 text-sm">
+                📋 复制结果
+            </button>
+        </div>
+        <div id="resultContent"></div>
+        <div id="copyTip" class="mt-2 text-green-600 text-sm hidden">✓ 复制成功！结果已复制到剪贴板</div>
+    </div>
+
+    <div id="calcProcessArea" class="mt-6 p-4 bg-yellow-50 rounded hidden">
+        <h2 class="text-xl font-bold mb-2">计算过程</h2>
+        <div id="calcProcessContent"></div>
+    </div>
+
+    <div class="mt-6">
+        <canvas id="emissionChart"></canvas>
+    </div>
+
+    <!-- 数据来源说明 -->
+    <div class="mt-6 p-4 bg-gray-50 rounded text-sm text-gray-600">
+        <p>数据来源于《大气污染物综合排放标准》（GB16297-1996）表2二级标准，计算方法为该标准附录B规定的计算方法。</p>
+    </div>
+
+    <!-- 版权信息 -->
+    <div class="mt-8 text-center text-sm text-gray-500">
+        <p>© 2026 云南省环境科学学会. 保留所有权利.</p>
+    </div>
+
+</div>
+
+<script>
+const pollutantData ={
+    "SO2": {heights:[15, 20, 30, 40, 50, 60, 70, 80, 90, 100], emission_rates:[2.6, 4.3, 15, 25, 39, 55, 77, 110, 130, 170], concentrations:[550, 550, 550, 550, 550, 550, 550, 550, 550, 550], unorganized_concentrations:[0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4], min_height:15, max_height:100},
+    "NOx": {heights:[15, 20, 30, 40, 50, 60, 70, 80, 90, 100], emission_rates:[0.77, 1.3, 4.4, 7.5, 12, 16, 23, 31, 40, 52], concentrations:[240, 240, 240, 240, 240, 240, 240, 240, 240, 240], unorganized_concentrations:[0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12, 0.12], min_height:15, max_height:100},
+    "颗粒物": {heights:[15, 20, 30, 40, 50, 60], emission_rates:[3.5, 5.9, 23, 39, 60, 85], concentrations:[120, 120, 120, 120, 120, 120], unorganized_concentrations:[1, 1, 1, 1, 1, 1], min_height:15, max_height:60},
+    "氯化氢": {heights:[15, 20, 30, 40, 50, 60, 70, 80], emission_rates:[0.26, 0.43, 1.4, 2.6, 3.8, 5.4, 7.7, 10], concentrations:[100, 100, 100, 100, 100, 100, 100, 100], unorganized_concentrations:[0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2], min_height:15, max_height:80},
+    "铬酸雾": {heights:[15, 20, 30, 40, 50, 60], emission_rates:[0.008, 0.013, 0.043, 0.076, 0.12, 0.16], concentrations:[0.07, 0.07, 0.07, 0.07, 0.07, 0.07], unorganized_concentrations:[0.006, 0.006, 0.006, 0.006, 0.006, 0.006], min_height:15, max_height:60},
+    "硫酸雾": {heights:[15, 20, 30, 40, 50, 60, 70, 80], emission_rates:[1.5, 2.6, 8.8, 15, 23, 33, 46, 63], concentrations:[45, 45, 45, 45, 45, 45, 45, 45], unorganized_concentrations:[1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2, 1.2], min_height:15, max_height:80},
+    "氟化物": {heights:[15, 20, 30, 40, 50, 60, 70, 80], emission_rates:[0.1, 0.17, 0.59, 1, 1.5, 2.2, 3.1, 4.2], concentrations:[9, 9, 9, 9, 9, 9, 9, 9], unorganized_concentrations:[0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02], min_height:15, max_height:80},
+    "氯气（排气筒高度不得低于25m）": {heights:[25, 30, 40, 50, 60, 70, 80], emission_rates:[0.52, 0.87, 2.9, 5, 7.7, 11, 15], concentrations:[65, 65, 65, 65, 65, 65, 65], unorganized_concentrations:[0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4], min_height:25, max_height:80},
+    "铅及其化合物": {heights:[15, 20, 30, 40, 50, 60, 70, 80, 90, 100], emission_rates:[0.004, 0.006, 0.027, 0.047, 0.072, 0.1, 0.15, 0.2, 0.26, 0.33], concentrations:[0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7, 0.7], unorganized_concentrations:[0.006, 0.006, 0.006, 0.006, 0.006, 0.006, 0.006, 0.006, 0.006, 0.006], min_height:15, max_height:100},
+    "汞及其化合物": {heights:[15, 20, 30, 40, 50, 60], emission_rates:[0.0015, 0.0026, 0.0078, 0.015, 0.023, 0.033], concentrations:[0.012, 0.012, 0.012, 0.012, 0.012, 0.012], unorganized_concentrations:[0.0012, 0.0012, 0.0012, 0.0012, 0.0012, 0.0012], min_height:15, max_height:60},
+    "镉及其化合物": {heights:[15, 20, 30, 40, 50, 60, 70, 80], emission_rates:[0.05, 0.09, 0.29, 0.5, 0.77, 1.1, 1.5, 2.1], concentrations:[0.85, 0.85, 0.85, 0.85, 0.85, 0.85, 0.85, 0.85], unorganized_concentrations:[0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04], min_height:15, max_height:80},
+    "铍及其化合物": {heights:[15, 20, 30, 40, 50, 60, 70, 80], emission_rates:[0.0011, 0.0018, 0.0062, 0.011, 0.016, 0.023, 0.033, 0.044], concentrations:[0.012, 0.012, 0.012, 0.012, 0.012, 0.012, 0.012, 0.012], unorganized_concentrations:[0.0008, 0.0008, 0.0008, 0.0008, 0.0008, 0.0008, 0.0008, 0.0008], min_height:15, max_height:80},
+    "镍及其化合物": {heights:[15, 20, 30, 40, 50, 60, 70, 80], emission_rates:[0.15, 0.26, 0.88, 1.5, 2.3, 3.3, 4.6, 6.3], concentrations:[4.3, 4.3, 4.3, 4.3, 4.3, 4.3, 4.3, 4.3], unorganized_concentrations:[0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04, 0.04], min_height:15, max_height:80},
+    "锡及其化合物": {heights:[15, 20, 30, 40, 50, 60, 70, 80], emission_rates:[0.31, 0.52, 1.8, 3, 4.6, 6.6, 9.3, 13], concentrations:[8.5, 8.5, 8.5, 8.5, 8.5, 8.5, 8.5, 8.5], unorganized_concentrations:[0.24, 0.24, 0.24, 0.24, 0.24, 0.24, 0.24, 0.24], min_height:15, max_height:80},
+    "苯": {heights:[15, 20, 30, 40], emission_rates:[0.5, 0.9, 2.9, 5.6], concentrations:[12, 12, 12, 12], unorganized_concentrations:[0.4, 0.4, 0.4, 0.4], min_height:15, max_height:40},
+    "甲苯": {heights:[15, 20, 30, 40], emission_rates:[3.1, 5.2, 18, 30], concentrations:[40, 40, 40, 40], unorganized_concentrations:[2.4, 2.4, 2.4, 2.4], min_height:15, max_height:40},
+    "二甲苯": {heights:[15, 20, 30, 40], emission_rates:[1, 1.7, 5.9, 10], concentrations:[70, 71, 72, 73], unorganized_concentrations:[1.2, 1.2, 1.2, 1.2], min_height:15, max_height:40},
+    "酚类": {heights:[15, 20, 30, 40, 50, 60], emission_rates:[0.1, 0.17, 0.58, 1, 1.5, 2.2], concentrations:[100, 100, 100, 100, 100, 100], unorganized_concentrations:[0.08, 0.08, 0.08, 0.08, 0.08, 0.08], min_height:15, max_height:60},
+    "甲醛": {heights:[15, 20, 30, 40, 50, 60], emission_rates:[0.26, 0.43, 1.4, 2.6, 3.8, 5.4], concentrations:[25, 25, 25, 25, 25, 25], unorganized_concentrations:[0.2, 0.2, 0.2, 0.2, 0.2, 0.2], min_height:15, max_height:60},
+    "乙醛": {heights:[15, 20, 30, 40, 50, 60], emission_rates:[0.05, 0.09, 0.29, 0.5, 0.77, 1.1], concentrations:[125, 125, 125, 125, 125, 125], unorganized_concentrations:[0.04, 0.04, 0.04, 0.04, 0.04, 0.04], min_height:15, max_height:60},
+    "丙烯腈": {heights:[15, 20, 30, 40, 50, 60], emission_rates:[0.77, 1.3, 4.4, 7.5, 12, 16], concentrations:[22, 22, 22, 22, 22, 22], unorganized_concentrations:[0.6, 0.6, 0.6, 0.6, 0.6, 0.6], min_height:15, max_height:60},
+    "丙烯醛": {heights:[15, 20, 30, 40, 50, 60], emission_rates:[0.52, 0.87, 2.9, 5, 7.7, 11], concentrations:[16, 16, 16, 16, 16, 16], unorganized_concentrations:[0.4, 0.4, 0.4, 0.4, 0.4, 0.4], min_height:15, max_height:60},
+    "氰化氢": {heights:[25, 30, 40, 50, 60, 70, 80], emission_rates:[0.15, 0.26, 0.88, 1.5, 2.3, 3.3, 4.6], concentrations:[1.9, 1.9, 1.9, 1.9, 1.9, 1.9, 1.9], unorganized_concentrations:[0.024, 0.024, 0.024, 0.024, 0.024, 0.024, 0.024], min_height:25, max_height:80},
+    "甲醇": {heights:[15, 20, 30, 40, 50, 60], emission_rates:[5.1, 8.6, 29, 50, 77, 100], concentrations:[190, 190, 190, 190, 190, 190], unorganized_concentrations:[12, 12, 12, 12, 12, 12], min_height:15, max_height:60},
+    "苯胺类": {heights:[15, 20, 30, 40, 50, 60], emission_rates:[0.52, 0.87, 2.9, 5, 7.7, 11], concentrations:[20, 20, 20, 20, 20, 20], unorganized_concentrations:[0.4, 0.4, 0.4, 0.4, 0.4, 0.4], min_height:15, max_height:60},
+    "氯苯类": {heights:[15, 20, 30, 40, 50, 60, 70, 80, 90, 100], emission_rates:[0.52, 0.87, 2.5, 4.3, 6.6, 9.3, 13, 18, 23, 29], concentrations:[60, 60, 60, 60, 60, 60, 60, 60, 60, 60], unorganized_concentrations:[0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4], min_height:15, max_height:100},
+    "硝基苯类": {heights:[15, 20, 30, 40, 50, 60], emission_rates:[0.05, 0.09, 0.29, 0.5, 0.77, 1.1], concentrations:[16, 16, 16, 16, 16, 16], unorganized_concentrations:[0.04, 0.04, 0.04, 0.04, 0.04, 0.04], min_height:15, max_height:60},
+    "氯乙烯": {heights:[15, 20, 30, 40, 50, 60], emission_rates:[0.77, 1.3, 4.4, 7.5, 12, 16], concentrations:[36, 36, 36, 36, 36, 36], unorganized_concentrations:[0.6, 0.6, 0.6, 0.6, 0.6, 0.6], min_height:15, max_height:60},
+    "苯并芘（(沥青及碳索制品生产和加工）": {heights:[15, 20, 30, 40, 50, 60], emission_rates:[5e-05, 8.5e-05, 0.00029, 0.0005, 0.00077, 0.0011], concentrations:[0.0003, 0.0003, 0.0003, 0.0003, 0.0003, 0.0003], unorganized_concentrations:[8e-06, 8e-06, 8e-06, 8e-06, 8e-06, 8e-06], min_height:15, max_height:60},
+    "光气": {heights:[25, 30, 40, 50], emission_rates:[0.1, 0.17, 0.59, 1], concentrations:[3, 3, 3, 3], unorganized_concentrations:[0.08, 0.08, 0.08, 0.08], min_height:25, max_height:50},
+    "沥青烟（吹制沥青）": {heights:[15, 20, 30, 40, 50, 60, 70, 80], emission_rates:[0.18, 0.3, 1.3, 2.3, 3.6, 5.6, 7.4, 10], concentrations:[140, 140, 140, 140, 140, 140, 140, 140], unorganized_concentrations:['生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在'], min_height:15, max_height:80},
+    "沥青烟（熔炼、浸涂）": {heights:[15, 20, 30, 40, 50, 60, 70, 80], emission_rates:[0.18, 0.3, 1.3, 2.3, 3.6, 5.6, 7.4, 10], concentrations:[40, 40, 40, 40, 40, 40, 40, 40], unorganized_concentrations:['生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在'], min_height:15, max_height:80},
+    "沥青烟（建筑搅拌）": {heights:[15, 20, 30, 40, 50, 60, 70, 80], emission_rates:[0.18, 0.3, 1.3, 2.3, 3.6, 5.6, 7.4, 10], concentrations:[75, 75, 75, 75, 75, 75, 75, 75], unorganized_concentrations:['生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在'], min_height:15, max_height:80},
+    "石棉尘": {heights:[15, 20, 30, 40, 50], emission_rates:[0.55, 0.93, 3.6, 6.2, 9.4], concentrations:['1根（纤维）/cm³或10mg/m³', '1根（纤维）/cm³或10mg/m³', '1根（纤维）/cm³或10mg/m³', '1根（纤维）/cm³或10mg/m³', '1根（纤维）/cm³或10mg/m³'], unorganized_concentrations:['生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在', '生产设备不得有明显的无组织排放存在'], min_height:15, max_height:50},
+    "非甲烷总烃": {heights:[15, 20, 30, 40], emission_rates:[10, 17, 53, 100], concentrations:[120, 120, 120, 120], unorganized_concentrations:[4, 4, 4, 4], min_height:15, max_height:40}
+};
+
+// 初始化下拉框
+const select = document.getElementById('pollutantSelect');
+Object.keys(pollutantData).forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p;
+    if (p === "SO2") {
+        opt.textContent = "二氧化硫";
+    } else if (p === "NOx") {
+        opt.textContent = "氮氧化物";
+    } else {
+        opt.textContent = p;
+    }
+    select.appendChild(opt);
+});
+
+// 格式化数字：仅当数值小于10的负3次方时按科学计数法显示，其余保留5位小数
+function formatNumber(num, maxDecimals = 5) {
+    if (typeof num !== 'number') return num;
+    
+    // 小于10的负3次方时用科学计数法（保留5位有效数字）
+    if (num < 0.001 && num !== 0) {
+        const exponential = num.toExponential(5);
+        // 修正：正确处理正负指数，去除指数前多余的0（如e-04 → ×10^-4，e+05→×10^5）
+        return exponential
+            .replace(/e\+?0*(\d+)/, '×10^$1') // 处理正指数（e+05 → ×10^5，e5→×10^5）
+            .replace(/e-0*(\d+)/, '×10^-$1'); // 处理负指数（e-04 → ×10^-4）
+    }
+    
+    // 大于等于10的负3次方时保留最多5位小数，去除末尾无用的0
+    const fixedNum = num.toFixed(maxDecimals);
+    // 去除末尾的0和小数点（如果需要）
+    const trimmedNum = fixedNum.replace(/\.?0*$/, '');
+    return trimmedNum;
+}
+
+// 计算函数
+document.getElementById('calculateBtn').addEventListener('click', () => {
+    const pollutant = select.value;
+    const height = parseFloat(document.getElementById('heightInput').value);
+    const data = pollutantData[pollutant];
+    if (!data || isNaN(height)) return;
+
+    let rate, conc, unorg;
+    let processSteps = [];
+    processSteps.push(`1. 选择污染物：${pollutant}`);
+    processSteps.push(`2. 输入高度：h = ${height.toFixed(1)} m`);
+    processSteps.push(`3. 数据范围：h_min = ${data.min_height} m ~ h_max = ${data.max_height} m`);
+
+    // 氯气特殊警告
+    if (pollutant === "氯气（排气筒高度不得低于25m）" && height < 25) {
+        processSteps.push(`⚠️ 警告：氯气排气筒高度不得低于 25m，请输入 h ≥ 25m 的高度。`);
+    }
+
+    // 浓度直接取原始值
+    if (typeof data.concentrations === 'string') {
+        conc = data.concentrations;
+    } else {
+        conc = data.concentrations[0];
+    }
+    if (typeof data.unorganized_concentrations === 'string') {
+        unorg = data.unorganized_concentrations;
+    } else {
+        unorg = data.unorganized_concentrations[0];
+    }
+
+    if (height >= data.min_height && height <= data.max_height) {
+        processSteps.push(`4. 使用内插法计算排放速率 Q`);
+        rate = linearInterpolation(data.heights, data.emission_rates, height, processSteps);
+    } else if (height > data.max_height) {
+        processSteps.push(`4. 使用外推法（上限）计算排放速率 Q`);
+        const h_max = data.max_height;
+        const Q_max = data.emission_rates[data.heights.indexOf(h_max)];
+        rate = Q_max * Math.pow(height / h_max, 2);
+        processSteps.push(`   - 公式：Q = Q_max × (h / h_max)²`);
+        processSteps.push(`   - 最大高度：h_max = ${h_max} m，最大速率：Q_max = ${Q_max} kg/h`);
+        processSteps.push(`   - 计算：Q = ${Q_max} × (${height.toFixed(1)} / ${h_max})² = ${formatNumber(rate)} kg/h`);
+    } else {
+        processSteps.push(`4. 使用外推法（下限）计算排放速率 Q`);
+        const h_min = data.min_height;
+        const Q_min = data.emission_rates[data.heights.indexOf(h_min)];
+        rate = Q_min * Math.pow(height / h_min, 2);
+        processSteps.push(`   - 公式：Q = Q_min × (h / h_min)²`);
+        processSteps.push(`   - 最小高度：h_min = ${h_min} m，最小速率：Q_min = ${Q_min} kg/h`);
+        processSteps.push(`   - 计算：Q = ${Q_min} × (${height.toFixed(1)} / ${h_min})² = ${formatNumber(rate)} kg/h`);
+    }
+
+    if (height < 15) {
+        processSteps.push(`5. 高度 h < 15 m，速率 Q × 0.5`);
+        rate *= 0.5;
+    }
+
+    processSteps.push(`6. 最终排放速率：Q = ${formatNumber(rate)} kg/h`);
+    processSteps.push(`7. 排放浓度：${typeof conc === 'number' ? formatNumber(conc) + ' mg/m³' : conc}`);
+    processSteps.push(`8. 无组织排放浓度：${typeof unorg === 'number' ? formatNumber(unorg) + ' mg/m³' : unorg}`);
+
+    const resultDiv = document.getElementById('resultContent');
+    resultDiv.innerHTML = `
+        <p>污染物：${pollutant}</p>
+        <p>高度：h = ${height.toFixed(1)} 米</p>
+        <p>排放速率：Q = ${formatNumber(rate)} kg/h</p>
+        <p>排放浓度：${typeof conc === 'number' ? formatNumber(conc) + ' mg/m³' : conc}</p>
+        <p>无组织排放浓度：${typeof unorg === 'number' ? formatNumber(unorg) + ' mg/m³' : unorg}</p>
+    `;
+    document.getElementById('resultArea').classList.remove('hidden');
+
+    const processDiv = document.getElementById('calcProcessContent');
+    processDiv.innerHTML = processSteps.map(s => `<p>${s}</p>`).join('');
+    document.getElementById('calcProcessArea').classList.remove('hidden');
+
+    drawChart(data, height, rate);
+});
+
+// 线性插值函数
+function linearInterpolation(xs, ys, x, steps) {
+    for (let i = 0; i < xs.length - 1; i++) {
+        if (x >= xs[i] && x <= xs[i + 1]) {
+            const [h1, h2] = [xs[i], xs[i + 1]];
+            const [Q1, Q2] = [ys[i], ys[i + 1]];
+            steps.push(`   - 区间：h1 = ${h1} m ~ h2 = ${h2} m`);
+            steps.push(`   - 已知速率：Q1 = ${Q1} kg/h ~ Q2 = ${Q2} kg/h`);
+            steps.push(`   - 公式：Q = Q1 + (Q2 - Q1) × (h - h1) / (h2 - h1)`);
+            const result = Q1 + (Q2 - Q1) * (x - h1) / (h2 - h1);
+            steps.push(`   - 计算：Q = ${Q1} + (${Q2} - ${Q1}) × (${x.toFixed(1)} - ${h1}) / (${h2} - ${h1}) = ${formatNumber(result)} kg/h`);
+            return result;
+        }
+    }
+    return null;
+}
+
+// 绘制图表（折线+散点）
+function drawChart(data, height, rate) {
+    const ctx = document.getElementById('emissionChart').getContext('2d');
+    if (window.chart) window.chart.destroy();
+
+    const standardDataset = {
+        label: '标准排放速率',
+        data: data.emission_rates.map((r, i) => ({x: r, y: data.heights[i]})),
+        type: 'line',
+        borderColor: 'blue',
+        fill: false,
+        showLine: true
+    };
+
+    const resultDataset = {
+        label: '计算结果',
+        data: [{x: rate, y: height}],
+        type: 'scatter',
+        backgroundColor: 'red',
+        pointRadius: 6,
+        pointHoverRadius: 8
+    };
+
+    window.chart = new Chart(ctx, {
+        data: {
+            datasets: [standardDataset, resultDataset]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { 
+                    title: { display: true, text: '速率 Q (kg/h)' },
+                    type: 'linear'
+                },
+                y: { 
+                    title: { display: true, text: '排气筒高度 h (m)' },
+                    type: 'linear'
+                }
+            }
+        }
+    });
+}
+
+// 复制结果到剪贴板
+function copyResult() {
+    const resultContent = document.getElementById('resultContent').innerText;
+    navigator.clipboard.writeText(resultContent).then(() => {
+        const copyTip = document.getElementById('copyTip');
+        copyTip.classList.remove('hidden');
+        setTimeout(() => copyTip.classList.add('hidden'), 3000);
+    }).catch(err => {
+        alert('复制失败，请手动复制：' + err);
+    });
+}
+</script>
+
+</body>
+</html>
